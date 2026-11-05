@@ -1176,6 +1176,11 @@ local DEFAULTS = {
 	SniperFruits = {},
 	SkillKeys = { Z = true, X = true, C = true },
 	SkillHold = 0.4,
+	MasteryMethod = "Blox Fruit",
+	MasteryHP = 40,
+	Raid = "Flame",
+	HookUrl = "",
+	HookPing = "",
 	WalkSpeedValue = 100,
 	JumpPowerValue = 100,
 }
@@ -1411,6 +1416,7 @@ pcall(function()
 end)
 
 ---------------------------------------------------------------- vu khi + tan cong
+local activeTip
 local function getTool(tip)
 	for _, cont in ipairs({ lp.Character, lp.Backpack }) do
 		if cont then
@@ -1423,7 +1429,7 @@ local function getTool(tip)
 	end
 end
 local function equip()
-	local t = getTool(Settings.Weapon)
+	local t = getTool(activeTip or Settings.Weapon)
 	local h = hum()
 	if t and h and t.Parent ~= lp.Character and not h.Sit then
 		h:EquipTool(t)
@@ -1581,7 +1587,7 @@ if not env.KhangHookInstalled then
 				and env.KhangBFAlive == cfg.id
 				and env.KhangAim
 				and os.clock() - (env.KhangAimT or 0) < 1
-				and cfg.Settings.AutoSkill
+				and (cfg.Settings.AutoSkill or cfg.Settings.FarmMastery or cfg.Settings.AimbotPlayer)
 				and getnamecallmethod() == "FireServer"
 				and self.Name == "RemoteEvent"
 			then
@@ -1695,18 +1701,28 @@ local function fight(mob, noBring)
 			bring(mob)
 		end
 	end
+	local tip = Settings.Weapon
+	local masteryOn = false
+	if Settings.FarmMastery then
+		local mh = mob:FindFirstChildWhichIsA("Humanoid")
+		if mh and mh.MaxHealth > 0 and mh.Health / mh.MaxHealth <= (Settings.MasteryHP or 40) / 100 then
+			tip = Settings.MasteryMethod or "Blox Fruit"
+			masteryOn = true
+		end
+	end
+	activeTip = tip
 	equip()
-	local x = (Settings.Weapon == "Blox Fruit") and -7 or 7
+	local x = (tip == "Blox Fruit") and -7 or 7
 	move(mr.CFrame * CFrame.new(x, Settings.Height or 20, 0))
 	if dist < 70 then
-		local done = Settings.Weapon == "Blox Fruit" and fruitM1(mob)
+		local done = tip == "Blox Fruit" and fruitM1(mob)
 		if not done then
 			pcall(attackAOE, Settings.Range or 30)
 		end
 	end
 	env.KhangAim = mr.CFrame
 	env.KhangAimT = os.clock()
-	if Settings.AutoSkill and dist < 90 and not skillBusy then
+	if (Settings.AutoSkill or masteryOn) and dist < 90 and not skillBusy then
 		task.spawn(useSkill)
 	end
 	status("Fighting " .. mob.Name)
@@ -2156,6 +2172,60 @@ local function boostFps()
 	end)
 end
 
+---------------------------------------------------------------- webhook + npc
+local function sendHook(title, text)
+	local url = Settings.HookUrl
+	if not url or url == "" then
+		return
+	end
+	local req = request or http_request or (syn and syn.request)
+	if not req then
+		return
+	end
+	local ping = ""
+	if Settings.HookPing and Settings.HookPing ~= "" then
+		ping = tonumber(Settings.HookPing) and ("<@" .. Settings.HookPing .. ">") or "@everyone"
+	end
+	pcall(function()
+		req({
+			Url = url,
+			Method = "POST",
+			Headers = { ["Content-Type"] = "application/json" },
+			Body = HttpService:JSONEncode({
+				content = ping,
+				username = "Khang Hub",
+				embeds = { {
+					title = title,
+					description = text,
+					color = 5814783,
+					fields = {
+						{ name = "Player", value = "||" .. lp.Name .. "||", inline = true },
+						{ name = "JobId", value = "`" .. game.JobId .. "`", inline = true },
+					},
+				} },
+			}),
+		})
+	end)
+end
+
+local function findNpc(name)
+	local r = hrp()
+	local best, bd
+	for _, cont in ipairs({ workspace:FindFirstChild("NPCs"), RS:FindFirstChild("NPCs") }) do
+		if cont then
+			for _, n in ipairs(cont:GetChildren()) do
+				if n.Name == name and n:FindFirstChild("HumanoidRootPart") then
+					local d = r and (n.HumanoidRootPart.Position - r.Position).Magnitude or 0
+					if not bd or d < bd then
+						best, bd = n, d
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
 ---------------------------------------------------------------- trai + ruong
 local function touch(part)
 	local r = hrp()
@@ -2289,6 +2359,16 @@ local function chestTick()
 end
 
 ---------------------------------------------------------------- vong lap farm chinh
+local Extras = {}
+local UIQ = {}
+local function anyExtra()
+	for _, ex in ipairs(Extras) do
+		if ex.enabled() then
+			return true
+		end
+	end
+	return false
+end
 local safe, safeTarget = false, nil
 local function farmTick()
 	local r, h = hrp(), hum()
@@ -2355,6 +2435,15 @@ local function farmTick()
 		end
 	end
 
+	for _, ex in ipairs(Extras) do
+		if ex.enabled() then
+			local ok, handled = pcall(ex.tick)
+			if ok and handled then
+				return
+			end
+		end
+	end
+
 	if Settings.AutoElite then
 		local e = findElite()
 		if e then
@@ -2398,7 +2487,7 @@ end
 task.spawn(function()
 	while alive() do
 		task.wait()
-		if Settings.StartFarm or Settings.KillBoss or Settings.CollectFruit or Settings.AutoChest or Settings.TeleIsland or Settings.AutoElite then
+		if Settings.StartFarm or Settings.KillBoss or Settings.CollectFruit or Settings.AutoChest or Settings.TeleIsland or Settings.AutoElite or anyExtra() then
 			local ok, err = pcall(farmTick)
 			if not ok then
 				status("Error: " .. tostring(err))
@@ -2489,6 +2578,9 @@ local function storeContainer(cont)
 			local base = t.Name:gsub(" Fruit", "")
 			local key = t:GetAttribute("OriginalName") or (base .. "-" .. base)
 			CF("StoreFruit", key, t)
+			if Settings.HookStore then
+				sendHook("Fruit stored", t.Name)
+			end
 			task.wait(1)
 		end
 	end
@@ -2786,6 +2878,547 @@ local function unload()
 end
 env.KhangBF = { Unload = unload }
 
+---------------------------------------------------------------- MODULES MO RONG
+-- ===== Shop: phong cach chien dau, ky nang, mua tu dong
+do
+	local STYLES = {
+		{ "Black Leg", "Dark Step Teacher", { { "BuyBlackLeg" } } },
+		{ "Fishman Karate", "Water Kung-fu Teacher", { { "BuyFishmanKarate" } } },
+		{ "Electro", "Mad Scientist", { { "BuyElectro" } } },
+		{ "Dragon Claw", "Sabi", { { "BlackbeardReward", "DragonClaw", "1" }, { "BlackbeardReward", "DragonClaw", "2" } } },
+		{ "SuperHuman", "Martial Arts Master", { { "BuySuperhuman" } } },
+		{ "Death Step", "Phoeyu, the Reformed", { { "BuyDeathStep" } } },
+		{ "Sharkman Karate", "Sharkman Teacher", { { "BuySharkmanKarate" } } },
+		{ "Electric Claw", "Previous Hero", { { "BuyElectricClaw" } } },
+		{ "Dragon Talon", "Uzoth", { { "BuyDragonTalon" } } },
+		{ "God Human", "Ancient Monk", { { "BuyGodhuman" } } },
+		{ "Sanguine Art", "Shafi", { { "BuySanguineArt" } } },
+	}
+	local function active()
+		for _, st in ipairs(STYLES) do
+			if Settings["Style " .. st[1]] then
+				return st
+			end
+		end
+	end
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return active() ~= nil
+		end,
+		tick = function()
+			local st = active()
+			local npc = findNpc(st[2])
+			local r = hrp()
+			if not npc or not r then
+				status("NPC not found: " .. st[2] .. " (wrong sea?)")
+				return false
+			end
+			move(npc.HumanoidRootPart.CFrame * CFrame.new(0, 4, 4))
+			status("Buying style: " .. st[1])
+			if (r.Position - npc.HumanoidRootPart.Position).Magnitude < 8 then
+				for _, call in ipairs(st[3]) do
+					CF(table.unpack(call))
+				end
+				task.wait(1)
+			end
+			return true
+		end,
+	}
+
+	task.spawn(function()
+		while alive() do
+			task.wait(0.5)
+			if Settings.AutoBone then
+				CF("Bones", "Buy", 1, 1)
+			end
+			if Settings.AutoSword then
+				CF("LegendarySwordDealer", "2")
+			end
+			if Settings.AutoHakiColor then
+				CF("ColorsDealer", "2")
+			end
+		end
+	end)
+
+	local CODES = {
+		"EASTEREXP", "BANEXPLOIT", "NOMOREHACKS", "WildDares", "BossBuild", "GetPranked", "EARN_FRUITS",
+		"Sub2UncleKizaru", "FIGHT4FRUIT", "kittgaming", "TRIPLEABUSE", "Sub2CaptainMaui", "Sub2Fer999",
+		"Enyu_is_Pro", "Magicbus", "JCWK", "Starcodeheo", "Bluxxy", "SUB2GAMERROBOT_EXP1", "Sub2NoobMaster123",
+		"Sub2Daigrock", "Axiore", "TantaiGaming", "StrawHatMaine", "Sub2OfficialNoobie", "TheGreatAce",
+		"SEATROLLIN", "24NOADMIN", "ADMIN_TROLL", "NEWTROLL", "SECRET_ADMIN", "staffbattle", "NOEXPLOIT",
+		"NOOB2ADMIN", "CODESLIDE", "fruitconcepts",
+	}
+
+	UIQ[#UIQ + 1] = function(Main, ctx)
+		local P = Main.CreatePage({ Page_Name = "Shop", Page_Title = "Shop" })
+		local S1 = P.CreateSection("Fighting Styles (tu bay toi NPC va mua)")
+		for _, st in ipairs(STYLES) do
+			S1.CreateToggle({ Title = st[1], Default = Settings["Style " .. st[1]] }, bind("Style " .. st[1]))
+		end
+		local S2 = P.CreateSection("Abilities")
+		S2.CreateButton({ Title = "Buy Skyjump (Geppo)" }, function() CF("BuyHaki", "Geppo") end)
+		S2.CreateButton({ Title = "Buy Buso Haki" }, function() CF("BuyHaki", "Buso") end)
+		S2.CreateButton({ Title = "Buy Observation Haki" }, function() CF("KenTalk", "Buy") end)
+		S2.CreateButton({ Title = "Buy Soru" }, function() CF("BuyHaki", "Soru") end)
+		local S3 = P.CreateSection("Misc Shop")
+		S3.CreateButton({ Title = "Redeem All Codes" }, function()
+			for _, c in ipairs(CODES) do
+				pcall(function() RS.Remotes.Redeem:InvokeServer(c) end)
+			end
+		end)
+		S3.CreateButton({ Title = "Buy Dual Flintlock" }, function() CF("BuyItem", "Dual Flintlock") end)
+		S3.CreateButton({ Title = "Reroll Race" }, function() CF("BlackbeardReward", "Reroll", "2") end)
+		S3.CreateButton({ Title = "Reset Stats" }, function()
+			CF("BlackbeardReward", "Refund", "1")
+			CF("BlackbeardReward", "Refund", "2")
+		end)
+		S3.CreateButton({ Title = "Buy Race Cyborg" }, function() CF("CyborgTrainer", "Buy") end)
+		S3.CreateButton({ Title = "Buy Race Ghoul" }, function()
+			CF("Ectoplasm", "BuyCheck", 4)
+			CF("Ectoplasm", "Change", 4)
+		end)
+		local S4 = P.CreateSection("Auto Buy")
+		S4.CreateToggle({ Title = "Auto Trade Bone", Default = Settings.AutoBone }, bind("AutoBone"))
+		S4.CreateToggle({ Title = "Auto Buy Legendary Sword", Default = Settings.AutoSword }, bind("AutoSword"))
+		S4.CreateToggle({ Title = "Auto Buy Haki Color", Default = Settings.AutoHakiColor }, bind("AutoHakiColor"))
+	end
+end
+
+-- ===== Mastery + V3/V4 + skill
+do
+	task.spawn(function()
+		while alive() do
+			task.wait(2)
+			if Settings.AutoV3 then
+				pcall(function() RS.Remotes.CommE:FireServer("ActivateAbility") end)
+			end
+		end
+	end)
+	task.spawn(function()
+		while alive() do
+			task.wait(1)
+			if Settings.AutoV4 then
+				pcall(function()
+					local c = lp.Character
+					local en = c and c:FindFirstChild("RaceEnergy")
+					local tr = c and c:FindFirstChild("RaceTransformed")
+					if not en or en.Value < 1 or not tr or tr.Value then
+						return
+					end
+					local aw = lp.Backpack:FindFirstChild("Awakening") or c:FindFirstChild("Awakening")
+					if aw then
+						aw.RemoteFunction:InvokeServer(true)
+					end
+				end)
+			end
+		end
+	end)
+	UIQ[#UIQ + 1] = function(Main, ctx)
+		local S = ctx.Farm.CreateSection("Mastery")
+		S.CreateToggle({ Title = "Farm Mastery", Desc = "Mau quai thap thi doi vu khi va dung skill", Default = Settings.FarmMastery }, bind("FarmMastery"))
+		S.CreateDropdown({ Title = "Mastery Weapon", List = { "Blox Fruit", "Sword", "Melee" }, Default = Settings.MasteryMethod }, bind("MasteryMethod"))
+		S.CreateSlider({ Title = "Switch When Mob HP % Below", Min = 5, Max = 100, Default = Settings.MasteryHP, Precise = true }, bind("MasteryHP"))
+		local H = ctx.Player.CreateSection("Race")
+		H.CreateToggle({ Title = "Auto Turn On V3", Default = Settings.AutoV3 }, bind("AutoV3"))
+		H.CreateToggle({ Title = "Auto Turn On V4", Default = Settings.AutoV4 }, bind("AutoV4"))
+	end
+end
+
+-- ===== Raid
+do
+	local raidNames = {}
+	pcall(function()
+		for _, set in pairs(require(RS.Raids)) do
+			for name in pairs(set) do
+				raidNames[#raidNames + 1] = name
+			end
+		end
+	end)
+	table.sort(raidNames)
+	if #raidNames == 0 then
+		raidNames = { "Flame", "Ice", "Quake", "Light", "Dark", "String", "Rumble", "Magma", "Human: Buddha", "Sand", "Bird: Phoenix", "Dough" }
+	end
+	local function raidButton()
+		local m = workspace:FindFirstChild("Map")
+		if not m then
+			return nil
+		end
+		local ok, b = pcall(function()
+			if seaIdx == 2 then
+				return m.CircleIsland.RaidSummon2.Button.Main
+			elseif seaIdx == 3 then
+				return m["Boat Castle"].RaidSummon2.Button.Main
+			end
+		end)
+		return ok and b or nil
+	end
+	local function lastIsland()
+		local wo = workspace:FindFirstChild("_WorldOrigin")
+		local loc = wo and wo:FindFirstChild("Locations")
+		local r = hrp()
+		local best, bn = nil, 0
+		if loc and r then
+			for _, l in ipairs(loc:GetChildren()) do
+				if l.Name:find("Island ") and (l.Position - r.Position).Magnitude < 3000 then
+					local n = tonumber((l.Name:gsub("Island ", ""))) or 0
+					if n > bn then
+						best, bn = l, n
+					end
+				end
+			end
+		end
+		return best
+	end
+	local function inRaid()
+		local ok, vis = pcall(function()
+			return lp.PlayerGui.Main.TopHUDList.RaidTimer.Visible
+		end)
+		return ok and vis and lastIsland() ~= nil
+	end
+	local function hasTool(name)
+		return lp.Backpack:FindFirstChild(name) or (lp.Character and lp.Character:FindFirstChild(name))
+	end
+	local lastClick, lastBuy = 0, 0
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.AutoRaid and seaIdx ~= 1
+		end,
+		tick = function()
+			if inRaid() then
+				local mob = nearestAnyMob(400)
+				if mob then
+					fight(mob, true)
+				else
+					local isl = lastIsland()
+					if isl then
+						move(isl.CFrame * CFrame.new(0, 60, 0))
+						status("Raid: moving to next island")
+					end
+				end
+				return true
+			end
+			if hasTool("Special Microchip") then
+				local btn = raidButton()
+				if btn and btn:FindFirstChild("ClickDetector") then
+					stopMove()
+					if os.clock() - lastClick > 3 and fireclickdetector then
+						lastClick = os.clock()
+						fireclickdetector(btn.ClickDetector)
+						status("Starting raid")
+					end
+				else
+					move(seaIdx == 3 and CFrame.new(-5500, 314, -2855) or CFrame.new(-6503, 251, -4495))
+					status("Going to raid altar")
+				end
+				return true
+			end
+			if os.clock() - lastBuy > 3 then
+				lastBuy = os.clock()
+				CF("RaidsNpc", "Check")
+				CF("RaidsNpc", "Select", Settings.Raid or "Flame")
+				status("Buying raid chip (hold a fruit)")
+			end
+			return true
+		end,
+	}
+	UIQ[#UIQ + 1] = function(Main, ctx)
+		local P = Main.CreatePage({ Page_Name = "Raid", Page_Title = "Raid" })
+		local S = P.CreateSection("Auto Raid")
+		S.CreateDropdown({ Title = "Select Raid", List = raidNames, Search = true, Default = Settings.Raid }, bind("Raid"))
+		S.CreateToggle({ Title = "Auto Raid", Desc = "Can cam 1 trai trong tui de mua chip. Chi Sea 2 / Sea 3", Default = Settings.AutoRaid }, bind("AutoRaid"))
+	end
+end
+
+-- ===== Teleport NPC / Mirage / Fossil + Berry
+do
+	local npcToggle
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.TeleNpc or Settings.TeleMirage or Settings.TeleFossil
+		end,
+		tick = function()
+			local r = hrp()
+			if not r then
+				return false
+			end
+			local targetName
+			if Settings.TeleMirage and workspace.Map:FindFirstChild("MysticIsland") then
+				targetName = "Advanced Fruit Dealer"
+			elseif Settings.TeleFossil and workspace.Map:FindFirstChild("PrehistoricIsland") then
+				targetName = "Fossil Expert"
+			elseif Settings.TeleNpc and Settings.NpcName then
+				targetName = Settings.NpcName
+			end
+			if not targetName then
+				return false
+			end
+			local npc = findNpc(targetName)
+			if not npc then
+				status("NPC not found: " .. targetName)
+				return false
+			end
+			move(npc.HumanoidRootPart.CFrame * CFrame.new(0, 3, 4))
+			status("Going to " .. targetName)
+			if (r.Position - npc.HumanoidRootPart.Position).Magnitude < 10 and Settings.TeleNpc and not (Settings.TeleMirage or Settings.TeleFossil) then
+				stopMove()
+				if npcToggle then
+					npcToggle:SetStage(false)
+				else
+					Settings.TeleNpc = false
+				end
+			end
+			return true
+		end,
+	}
+
+	local function bushTarget()
+		for _, b in ipairs(CS:GetTagged("BerryBush")) do
+			for _, v in pairs(b:GetAttributes()) do
+				if v then
+					return b
+				end
+			end
+		end
+	end
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.AutoBerry
+		end,
+		tick = function()
+			local b = bushTarget()
+			if not b then
+				status("Waiting berries...")
+				return false
+			end
+			local child = b:GetChildren()[1]
+			if not child then
+				if b.Parent and b.Parent:IsA("Model") then
+					move(b.Parent.WorldPivot)
+				end
+			else
+				move(child.WorldPivot)
+				local pp = child:FindFirstChild("ProximityPrompt")
+				if pp and fireproximityprompt then
+					fireproximityprompt(pp)
+				end
+			end
+			status("Collecting berries")
+			return true
+		end,
+	}
+
+	UIQ[#UIQ + 1] = function(Main, ctx)
+		local names, seen = {}, {}
+		for _, cont in ipairs({ workspace:FindFirstChild("NPCs"), RS:FindFirstChild("NPCs") }) do
+			if cont then
+				for _, n in ipairs(cont:GetChildren()) do
+					if not seen[n.Name] and not n.Name:find("Boat") and not n.Name:find("Set Home") then
+						seen[n.Name] = true
+						names[#names + 1] = n.Name
+					end
+				end
+			end
+		end
+		table.sort(names)
+		local S = ctx.Misc.CreateSection("Teleport NPC")
+		S.CreateDropdown({ Title = "Select NPC", List = names, Search = true, Default = Settings.NpcName }, bind("NpcName"))
+		npcToggle = S.CreateToggle({ Title = "Teleport To NPC", Default = false }, function(v)
+			Settings.TeleNpc = v
+			if not v then
+				stopMove()
+			end
+		end)
+		S.CreateToggle({ Title = "Teleport Mirage Dealer", Desc = "Khi co Mirage Island", Default = Settings.TeleMirage }, bind("TeleMirage"))
+		S.CreateToggle({ Title = "Teleport Fossil Expert", Desc = "Khi co Prehistoric Island", Default = Settings.TeleFossil }, bind("TeleFossil"))
+		local B = ctx.Misc.CreateSection("Berry")
+		B.CreateToggle({ Title = "Auto Collect Berry", Default = Settings.AutoBerry }, bind("AutoBerry"))
+	end
+end
+
+-- ===== PVP
+do
+	local function playerList()
+		local list = {}
+		for _, pl in ipairs(Players:GetPlayers()) do
+			if pl ~= lp then
+				list[#list + 1] = pl.Name
+			end
+		end
+		table.sort(list)
+		return list
+	end
+	local function targetChar()
+		local folder = workspace:FindFirstChild("Characters")
+		if not folder then
+			return nil
+		end
+		if Settings.PvpPlayer and folder:FindFirstChild(Settings.PvpPlayer) then
+			return folder[Settings.PvpPlayer]
+		end
+		local r = hrp()
+		local best, bd
+		for _, c in ipairs(folder:GetChildren()) do
+			local cr = c:FindFirstChild("HumanoidRootPart")
+			if c ~= lp.Character and cr and r then
+				local d = (cr.Position - r.Position).Magnitude
+				if not bd or d < bd then
+					best, bd = c, d
+				end
+			end
+		end
+		return best
+	end
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.TeleportPlayer and Settings.PvpPlayer
+		end,
+		tick = function()
+			local folder = workspace:FindFirstChild("Characters")
+			local c = folder and folder:FindFirstChild(Settings.PvpPlayer)
+			local cr = c and c:FindFirstChild("HumanoidRootPart")
+			if not cr then
+				status("Player not found: " .. tostring(Settings.PvpPlayer))
+				return false
+			end
+			move(cr.CFrame * CFrame.new(0, 0, 3))
+			status("Following " .. Settings.PvpPlayer)
+			return true
+		end,
+	}
+	track(RunService.Heartbeat:Connect(function()
+		if alive() and Settings.AimbotPlayer then
+			local c = targetChar()
+			local cr = c and c:FindFirstChild("HumanoidRootPart")
+			if cr then
+				env.KhangAim = cr.CFrame
+				env.KhangAimT = os.clock()
+			end
+		end
+	end))
+	UIQ[#UIQ + 1] = function(Main, ctx)
+		local P = Main.CreatePage({ Page_Name = "PVP", Page_Title = "PVP" })
+		local S = P.CreateSection("Target")
+		local dd = S.CreateDropdown({ Title = "Select Player", List = playerList(), Search = true, Default = Settings.PvpPlayer }, bind("PvpPlayer"))
+		S.CreateButton({ Title = "Refresh Players" }, function()
+			dd:GetNewList(playerList())
+		end)
+		S.CreateToggle({ Title = "Teleport To Player", Desc = "Bay theo nguoi da chon", Default = false }, function(v)
+			Settings.TeleportPlayer = v
+			if not v then
+				stopMove()
+			end
+		end)
+		S.CreateToggle({ Title = "Aimbot Skills", Desc = "Ngam skill vao nguoi da chon (hoac nguoi gan nhat)", Default = Settings.AimbotPlayer }, bind("AimbotPlayer"))
+	end
+end
+
+-- ===== Status + Webhook + tien ich
+do
+	local function moonName()
+		local L = game:GetService("Lighting")
+		local id
+		pcall(function()
+			id = (seaIdx == 2) and L.FantasySky.MoonTextureId or L.Sky.MoonTextureId
+		end)
+		if id == "http://www.roblox.com/asset/?id=9709149431" then
+			return "Full Moon"
+		elseif id == "http://www.roblox.com/asset/?id=9709149052" then
+			return "Next Night"
+		end
+		return "Normal"
+	end
+	local function yn(v)
+		return v and "YES" or "no"
+	end
+	local labels = {}
+	local prev = {}
+	task.spawn(function()
+		while alive() do
+			task.wait(1)
+			pcall(function()
+				local m = workspace:FindFirstChild("Map")
+				local wo = workspace:FindFirstChild("_WorldOrigin")
+				local mirage = m and m:FindFirstChild("MysticIsland") ~= nil
+				local pre = m and m:FindFirstChild("PrehistoricIsland") ~= nil
+				local frozen = wo and wo:FindFirstChild("Locations") and wo.Locations:FindFirstChild("Frozen Dimension") ~= nil
+				local kitsune = m and m:FindFirstChild("KitsuneIsland") ~= nil
+				local t = workspace.DistributedGameTime
+				local L = game:GetService("Lighting")
+				local function set(k, text)
+					if labels[k] then
+						labels[k].SetText(text)
+					end
+				end
+				set("time", string.format("Server time: %dh %dm %ds", t / 3600, t / 60 % 60, t % 60))
+				set("moon", "Moon: " .. moonName() .. "  (clock " .. string.format("%.1f", L.ClockTime) .. ")")
+				set("mirage", "Mirage Island: " .. yn(mirage))
+				set("pre", "Prehistoric Island: " .. yn(pre))
+				set("frozen", "Frozen Dimension: " .. yn(frozen))
+				set("kitsune", "Kitsune Island: " .. yn(kitsune))
+				set("elite", "Elite Hunter: " .. yn(findElite() ~= nil))
+				if mirage and not prev.mirage and Settings.HookMirage then sendHook("Mirage Island", "Spawned") end
+				if pre and not prev.pre and Settings.HookPre then sendHook("Prehistoric Island", "Spawned") end
+				if frozen and not prev.frozen and Settings.HookFrozen then sendHook("Frozen Dimension", "Spawned") end
+				prev.mirage, prev.pre, prev.frozen = mirage, pre, frozen
+			end)
+		end
+	end)
+
+	-- tu vao lai khi bi disconnect
+	task.spawn(function()
+		while alive() do
+			task.wait(2)
+			if Settings.AutoRejoin then
+				pcall(function()
+					local pg = CoreGui:FindFirstChild("RobloxPromptGui")
+					local ov = pg and pg:FindFirstChild("promptOverlay")
+					local ep = ov and ov:FindFirstChild("ErrorPrompt")
+					if ep then
+						local msg = ep:FindFirstChild("MessageArea", true)
+						msg = msg and msg:FindFirstChild("ErrorMessage", true)
+						local txt = msg and msg.Text or ""
+						if not string.find(txt, "Teleport") then
+							game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, lp)
+						end
+					end
+				end)
+			end
+		end
+	end)
+
+	UIQ[#UIQ + 1] = function(Main, ctx)
+		local P = Main.CreatePage({ Page_Name = "Status", Page_Title = "Status" })
+		local S = P.CreateSection("Server")
+		for _, k in ipairs({ "time", "moon", "mirage", "pre", "frozen", "kitsune", "elite" }) do
+			labels[k] = S.CreateLabel({ Title = "..." })
+		end
+		local W = P.CreateSection("Webhook")
+		W.CreateBox({ Title = "Webhook URL", Placeholder = "https://discord.com/api/webhooks/...", Default = Settings.HookUrl }, bind("HookUrl"))
+		W.CreateBox({ Title = "Ping (Discord ID or everyone)", Placeholder = "optional", Default = Settings.HookPing }, bind("HookPing"))
+		W.CreateToggle({ Title = "Notify: Fruit Stored", Default = Settings.HookStore }, bind("HookStore"))
+		W.CreateToggle({ Title = "Notify: Mirage Island", Default = Settings.HookMirage }, bind("HookMirage"))
+		W.CreateToggle({ Title = "Notify: Prehistoric Island", Default = Settings.HookPre }, bind("HookPre"))
+		W.CreateToggle({ Title = "Notify: Frozen Dimension", Default = Settings.HookFrozen }, bind("HookFrozen"))
+		W.CreateButton({ Title = "Send Test Message" }, function()
+			sendHook("Khang Hub", "Webhook test OK")
+		end)
+		local O = ctx.Misc.CreateSection("More")
+		O.CreateToggle({ Title = "Auto Rejoin On Disconnect", Default = Settings.AutoRejoin }, bind("AutoRejoin"))
+		O.CreateDropdown({ Title = "Change Team", List = { "Pirates", "Marines" } }, function(v)
+			CF("SetTeam", v)
+		end)
+		O.CreateButton({ Title = "Open Titles" }, function()
+			pcall(function() lp.PlayerGui.Main.Titles.Visible = true end)
+		end)
+		O.CreateButton({ Title = "Open Colors" }, function()
+			pcall(function() lp.PlayerGui.Main.Colors.Visible = true end)
+		end)
+		O.CreateButton({ Title = "Stop Moving (cancel fly)" }, function()
+			stopMove()
+		end)
+	end
+end
+
 ---------------------------------------------------------------- UI
 local Main = A.CreateMain({ Title = "Khang Hub", Desc = "Blox Fruit - Auto Farm" })
 
@@ -2975,6 +3608,13 @@ SOther.CreateToggle({ Title = "Boost FPS", Desc = "Giam do hoa (bat 1 lan, rejoi
 		boostFps()
 	end
 end)
+
+for _, f in ipairs(UIQ) do
+	local ok, err = pcall(f, Main, { Farm = PFarm, Player = PPlayer, Misc = PMisc })
+	if not ok then
+		warn("[KhangHub] UI module error: " .. tostring(err))
+	end
+end
 
 -- ===== Setting
 local PSet = Main.CreatePage({ Page_Name = "Setting", Page_Title = "Setting" })
