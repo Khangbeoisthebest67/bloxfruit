@@ -1,4 +1,3 @@
-
 local A = (function()
 	local TweenService = game:GetService("TweenService")
 	local UIS = game:GetService("UserInputService")
@@ -3416,6 +3415,975 @@ do
 		O.CreateButton({ Title = "Stop Moving (cancel fly)" }, function()
 			stopMove()
 		end)
+	end
+end
+
+-- ===== Stack farm: boss, summon, factory, raid dao, new world, law
+do
+	local function tool(name)
+		return lp.Backpack:FindFirstChild(name) or (lp.Character and lp.Character:FindFirstChild(name))
+	end
+	local function equipNamed(name)
+		local t = lp.Backpack:FindFirstChild(name)
+		local h = hum()
+		if t and h then
+			h:EquipTool(t)
+		end
+	end
+	local function click(cd)
+		if cd and fireclickdetector then
+			pcall(fireclickdetector, cd)
+		end
+	end
+	local lastHop = 0
+
+	-- Kill all boss
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.KillAllBoss
+		end,
+		tick = function()
+			for _, name in ipairs(BOSSES) do
+				local b = findBoss(name)
+				if b then
+					fight(b, true)
+					return true
+				end
+			end
+			if Settings.HopNoBoss and os.clock() - lastHop > 20 then
+				lastHop = os.clock()
+				hopServer()
+			end
+			return false
+		end,
+	}
+
+	-- hop khi khong co trai
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.CollectFruit and Settings.HopNoFruit
+		end,
+		tick = function()
+			if not findFruit() and os.clock() - lastHop > 15 then
+				lastHop = os.clock()
+				hopServer()
+			end
+			return false
+		end,
+	}
+
+	-- Summon Darkbeard / Soul Reaper (di chuyen), Dough King (remote)
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.SummonDarkbeard or Settings.SummonSoulReaper
+		end,
+		tick = function()
+			local r = hrp()
+			if not r then
+				return false
+			end
+			if Settings.SummonDarkbeard and tool("Fist of Darkness") then
+				local det
+				pcall(function()
+					det = workspace.Map.DarkbeardArena.Summoner.Detection
+				end)
+				if det then
+					move(det.CFrame)
+					status("Summoning Darkbeard")
+					if (r.Position - det.Position).Magnitude <= 6 then
+						equipNamed("Fist of Darkness")
+						local t = tool("Fist of Darkness")
+						if t and t:FindFirstChild("Handle") and firetouchinterest then
+							pcall(firetouchinterest, t.Handle, det, 0)
+							pcall(firetouchinterest, t.Handle, det, 1)
+							pcall(firetouchinterest, r, det, 0)
+							pcall(firetouchinterest, r, det, 1)
+						end
+					end
+					return true
+				end
+			end
+			if Settings.SummonSoulReaper and tool("Hallow Essence") then
+				local det
+				pcall(function()
+					det = workspace.Map["Haunted Castle"].Summoner.Detection
+				end)
+				if det then
+					move(det.CFrame)
+					status("Summoning Soul Reaper")
+					if (r.Position - det.Position).Magnitude <= 8 then
+						equipNamed("Hallow Essence")
+					end
+					return true
+				end
+			end
+			return false
+		end,
+	}
+	task.spawn(function()
+		while alive() do
+			task.wait(1)
+			if Settings.SummonDough and tool("Sweet Chalice") then
+				CF("CakePrinceSpawner")
+			end
+		end
+	end)
+
+	-- Auto Factory (Core)
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.AutoFactory
+		end,
+		tick = function()
+			local core = findBoss("Core")
+			if core then
+				fight(core, true)
+				return true
+			end
+			return false
+		end,
+	}
+
+	-- Pirate Raid (Sea 3)
+	local function pirateMob()
+		local center = Vector3.new(-5543, 313, -2964)
+		for _, cont in ipairs({ workspace.Enemies, RS }) do
+			for _, m in ipairs(cont:GetChildren()) do
+				if
+					m:IsA("Model")
+					and m.Name ~= "Oni2"
+					and m.Name ~= "rip_indra True Form"
+					and not m.Name:find("Boss")
+					and not m.Name:find("Friend")
+					and not m.Name:find("Wraith")
+					and isAlive(m)
+					and (m.HumanoidRootPart.Position - center).Magnitude < 1000
+				then
+					return m
+				end
+			end
+		end
+	end
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.AutoPirateRaid and seaIdx == 3
+		end,
+		tick = function()
+			local m = pirateMob()
+			if m then
+				fight(m, true)
+				return true
+			end
+			return false
+		end,
+	}
+
+	-- Auto New World (Sea 1, level >= 700)
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.AutoNewWorld and seaIdx == 1
+		end,
+		tick = function()
+			if lp.Data.Level.Value < 700 then
+				status("New World needs level 700")
+				return false
+			end
+			if CF("DressrosaQuestProgress", "Dressrosa") == 0 then
+				status("Travelling to New World")
+				CF("TravelDressrosa")
+				task.wait(2)
+				return true
+			end
+			local r = hrp()
+			local door
+			pcall(function()
+				door = workspace.Map.Ice.Door
+			end)
+			if not r or not door then
+				return false
+			end
+			if door.CanCollide then
+				if not tool("Key") then
+					local pos = Vector3.new(4852.2895, 5.6514, 718.5307)
+					move(CFrame.new(pos))
+					status("Getting key")
+					if (r.Position - pos).Magnitude < 5 then
+						CF("DressrosaQuestProgress", "Detective")
+						task.wait(1)
+						equipNamed("Key")
+					end
+				else
+					equipNamed("Key")
+					if lp.Character and lp.Character:FindFirstChild("Key") then
+						move(door.CFrame)
+						status("Opening ice door")
+					end
+				end
+				return true
+			end
+			local boss = findBoss("Ice Admiral")
+			if boss then
+				fight(boss, true)
+				return true
+			end
+			return false
+		end,
+	}
+
+	-- Auto Law (Order)
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.AutoLaw and seaIdx == 2
+		end,
+		tick = function()
+			local btn
+			pcall(function()
+				btn = workspace.Map.CircleIsland.RaidSummon.Button.Main.ClickDetector
+			end)
+			if tool("Core Brain") then
+				click(btn)
+				return true
+			end
+			local boss = findBoss("Order")
+			if boss then
+				fight(boss, true)
+				return true
+			end
+			if not tool("Microchip") and lp.Data.Fragments.Value >= 1000 then
+				CF("BlackbeardReward", "Microchip", "2")
+				task.wait(2)
+				return true
+			elseif tool("Microchip") then
+				click(btn)
+				return true
+			end
+			return false
+		end,
+	}
+
+	UIQ[#UIQ + 1] = function(Main, ctx)
+		local P = Main.CreatePage({ Page_Name = "Stack Farm", Page_Title = "Stack Farm" })
+		local S1 = P.CreateSection("Boss")
+		S1.CreateToggle({ Title = "Kill All Boss", Desc = "Co boss nao trong danh sach la danh", Default = Settings.KillAllBoss }, bind("KillAllBoss"))
+		S1.CreateToggle({ Title = "Hop Server If No Boss", Default = Settings.HopNoBoss }, bind("HopNoBoss"))
+		S1.CreateToggle({ Title = "Hop Server If No Fruit", Desc = "Dung chung voi Auto Collect Fruit", Default = Settings.HopNoFruit }, bind("HopNoFruit"))
+		local S2 = P.CreateSection("Summon")
+		S2.CreateToggle({ Title = "Summon Darkbeard", Desc = "Can Fist of Darkness (Sea 2)", Default = Settings.SummonDarkbeard }, bind("SummonDarkbeard"))
+		S2.CreateToggle({ Title = "Summon Soul Reaper", Desc = "Can Hallow Essence (Sea 3)", Default = Settings.SummonSoulReaper }, bind("SummonSoulReaper"))
+		S2.CreateToggle({ Title = "Summon Dough King", Desc = "Can Sweet Chalice", Default = Settings.SummonDough }, bind("SummonDough"))
+		local S3 = P.CreateSection("Events")
+		S3.CreateToggle({ Title = "Auto Factory (Core)", Default = Settings.AutoFactory }, bind("AutoFactory"))
+		S3.CreateToggle({ Title = "Auto Pirate Raid (Sea 3)", Default = Settings.AutoPirateRaid }, bind("AutoPirateRaid"))
+		S3.CreateToggle({ Title = "Auto Law (Order boss)", Desc = "Sea 2, can 1000 Fragments", Default = Settings.AutoLaw }, bind("AutoLaw"))
+		local S4 = P.CreateSection("World")
+		S4.CreateToggle({ Title = "Auto New World", Desc = "Sea 1, level 700+: lay key, danh Ice Admiral, sang Sea 2", Default = Settings.AutoNewWorld }, bind("AutoNewWorld"))
+	end
+end
+
+-- ===== Kill selected mobs + tien ich
+do
+	if type(Settings.SelMobs) ~= "table" then
+		Settings.SelMobs = {}
+	end
+	local function selected()
+		local list = {}
+		for name, on in pairs(Settings.SelMobs) do
+			if on then
+				list[#list + 1] = name
+			end
+		end
+		return list
+	end
+	Extras[#Extras + 1] = {
+		enabled = function()
+			return Settings.KillSelMobs
+		end,
+		tick = function()
+			local list = selected()
+			if #list == 0 then
+				status("Select mobs first")
+				return false
+			end
+			local m = findMob(list)
+			if m then
+				fight(m)
+			else
+				goSpawn(list)
+			end
+			return true
+		end,
+	}
+
+	-- tu click (kill aura)
+	task.spawn(function()
+		while alive() do
+			task.wait()
+			if Settings.AutoClick then
+				pcall(attackAOE, Settings.Range or 30)
+			end
+		end
+	end)
+
+	-- tat thong bao cua game
+	local Notif = safeRequire(function()
+		return RS.Notification
+	end)
+	if Notif then
+		pcall(function()
+			local oldDead, oldDisplay = Notif.Dead, Notif.Display
+			Notif.Dead = function(T)
+				if alive() and Settings.RemoveNotifications then
+					return true
+				end
+				return oldDead(T)
+			end
+			Notif.Display = function(T)
+				if alive() and Settings.RemoveNotifications then
+					return true
+				end
+				return oldDisplay(T)
+			end
+		end)
+	end
+
+	local function hopLow()
+		task.spawn(function()
+			local sb = RS:FindFirstChild("__ServerBrowser")
+			local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+			local body
+			local req = request or http_request or (syn and syn.request)
+			if req then
+				local ok, res = pcall(req, { Url = url, Method = "GET" })
+				if ok and res then
+					body = res.Body
+				end
+			end
+			if not body then
+				pcall(function()
+					body = game:HttpGet(url)
+				end)
+			end
+			local ok, data = pcall(function()
+				return HttpService:JSONDecode(body)
+			end)
+			if not sb or not ok or type(data) ~= "table" or not data.data then
+				A.CreateNoti({ Title = "Hop", Desc = "Could not load server list", ShowTime = 4 })
+				return
+			end
+			for _, sv in ipairs(data.data) do
+				if sv.id ~= game.JobId and sv.playing <= 3 and sv.playing < sv.maxPlayers then
+					A.CreateNoti({ Title = "Hop", Desc = "Joining a low-player server...", ShowTime = 3 })
+					pcall(function()
+						sb:InvokeServer("teleport", sv.id)
+					end)
+					return
+				end
+			end
+			A.CreateNoti({ Title = "Hop", Desc = "No low-player server found", ShowTime = 4 })
+		end)
+	end
+
+	UIQ[#UIQ + 1] = function(Main, ctx)
+		local mobNames = {}
+		pcall(function()
+			for _, set in pairs(Quests) do
+				for _, q in pairs(set) do
+					for name, cnt in pairs(q.Task) do
+						if cnt > 1 then
+							mobNames[name] = Settings.SelMobs[name] == true
+						end
+					end
+				end
+			end
+		end)
+		local S = ctx.Farm.CreateSection("Kill Selected Mobs")
+		S.CreateDropdown({ Title = "Select Mobs", List = mobNames, Search = true, Selected = true, Default = Settings.SelMobs }, function(name, state)
+			Settings.SelMobs[name] = state
+			save()
+		end)
+		S.CreateToggle({ Title = "Kill Selected Mobs", Default = Settings.KillSelMobs }, bind("KillSelMobs"))
+		S.CreateToggle({ Title = "Auto Click (no move)", Desc = "Chi click danh quai gan, khong di chuyen", Default = Settings.AutoClick }, bind("AutoClick"))
+
+		local O = ctx.Misc.CreateSection("Server / Config")
+		O.CreateButton({ Title = "Hop Low Player Server" }, function()
+			hopLow()
+		end)
+		local jobBox = ""
+		O.CreateBox({ Title = "Join JobId", Placeholder = "paste JobId", Default = "" }, function(t)
+			jobBox = t
+		end)
+		O.CreateButton({ Title = "Join JobId Now" }, function()
+			local sb = RS:FindFirstChild("__ServerBrowser")
+			if sb and jobBox ~= "" then
+				pcall(function()
+					sb:InvokeServer("teleport", jobBox)
+				end)
+			end
+		end)
+		O.CreateToggle({ Title = "Remove Game Notifications", Default = Settings.RemoveNotifications }, bind("RemoveNotifications"))
+		O.CreateButton({ Title = "Copy Config" }, function()
+			if setclipboard then
+				setclipboard(HttpService:JSONEncode(Settings))
+				A.CreateNoti({ Title = "Config", Desc = "Copied to clipboard", ShowTime = 3 })
+			end
+		end)
+	end
+end
+
+-- ===== Quest vat pham + Kaitun
+do
+	local KT = {} -- co chay tu dong do Kaitun dieu khien
+
+	local function tool(name)
+		return lp.Backpack:FindFirstChild(name) or (lp.Character and lp.Character:FindFirstChild(name))
+	end
+	local function equipNamed(name)
+		local t = lp.Backpack:FindFirstChild(name)
+		local h = hum()
+		if t and h then
+			h:EquipTool(t)
+		end
+	end
+	local function click(cd)
+		if cd and fireclickdetector then
+			pcall(fireclickdetector, cd)
+		end
+	end
+	local function near(pos, d)
+		local r = hrp()
+		return r and (r.Position - pos).Magnitude <= d
+	end
+
+	-- kho do (de biet da co Saber/Yama/Tushita chua)
+	local invCache, invAt = {}, 0
+	local function inventory()
+		if os.clock() - invAt < 3 then
+			return invCache
+		end
+		invAt = os.clock()
+		local names = {}
+		pcall(function()
+			local IRS = require(RS.ItemReplicationService)
+			local IC = require(RS.ItemConfig)
+			local KEYS = IRS.KEYS
+			for _, item in IRS:GetItems(KEYS.QUANTITY) do
+				if item.Value and item.Value > 0 then
+					local ok, ci = pcall(function()
+						return IC.match(item.ItemId):unwrap()
+					end)
+					if ok and ci and ci.Display then
+						local cat = ci.Display.Category
+						local storage = ci.Index and ci.Index.StorageKey
+						local nm = (cat == "Blox Fruit") and (storage or ci.Display.Name) or (ci.Display.Name or storage)
+						if nm then
+							names[nm] = true
+						end
+					end
+				end
+			end
+		end)
+		invCache = names
+		return names
+	end
+	local function owns(name)
+		return inventory()[name] == true or tool(name) ~= nil
+	end
+
+	------------------------------------------------------------ SABER (Sea 1)
+	local function saberTick()
+		if lp.Data.Level.Value < 200 or owns("Saber") then
+			return false
+		end
+		local r = hrp()
+		local Map = workspace.Map
+		local jungle, desert = Map:FindFirstChild("Jungle"), Map:FindFirstChild("Desert")
+		if not r or not jungle or not desert then
+			return false
+		end
+		local function doorSaber()
+			for _, p in ipairs(jungle.Final:GetChildren()) do
+				if p:IsA("Part") and not p.CanCollide then
+					return true
+				end
+			end
+			return false
+		end
+		local function doorCup()
+			for _, p in ipairs(desert.Burn:GetChildren()) do
+				if p:IsA("Part") and not p.CanCollide then
+					return true
+				end
+			end
+			return false
+		end
+		local function plate()
+			for _, m in ipairs(jungle.QuestPlates:GetChildren()) do
+				if m:IsA("Model") and m:FindFirstChild("Button") and m.Button:FindFirstChild("TouchInterest") then
+					return m
+				end
+			end
+		end
+		if doorSaber() then
+			local b = findBoss("Saber Expert")
+			if b then
+				fight(b, true)
+				return true
+			end
+			status("Saber: waiting Saber Expert")
+			return false
+		end
+		if jungle.QuestPlates.Door.CanCollide then
+			local pl = plate()
+			if pl then
+				move(pl.Button.CFrame)
+				status("Saber: plates puzzle")
+				return true
+			end
+			return false
+		end
+		if doorCup() then
+			local prog = CF("ProQuestProgress", "RichSon")
+			if prog ~= 0 and prog ~= 1 then
+				if not tool("Cup") then
+					local cupPos = Vector3.new(1112.46521, 4.92147732, 4364.55469)
+					move(CFrame.new(cupPos))
+					status("Saber: getting cup")
+					if near(cupPos, 5) then
+						move(CFrame.new(1113.66992, 7.5484705, 4365.27832))
+						if firetouchinterest and desert:FindFirstChild("Cup") then
+							pcall(firetouchinterest, desert.Cup, r, 0)
+							pcall(firetouchinterest, desert.Cup, r, 1)
+						end
+					end
+				else
+					equipNamed("Cup")
+					local cup = tool("Cup")
+					if cup and cup:FindFirstChild("Handle") and cup.Handle:FindFirstChild("TouchInterest") then
+						move(CFrame.new(1395.77307, 37.4733238, -1324.34631))
+						status("Saber: filling cup")
+					else
+						local pos = Vector3.new(1457.8768310547, 88.377502441406, -1390.6892089844)
+						move(CFrame.new(pos))
+						status("Saber: giving cup")
+						if near(pos, 8) then
+							CF("ProQuestProgress", "SickMan")
+						end
+					end
+				end
+			elseif prog == 0 then
+				local b = findBoss("Mob Leader")
+				if b then
+					fight(b, true)
+				else
+					status("Saber: waiting Mob Leader")
+					return false
+				end
+			else -- prog == 1
+				if not tool("Relic") then
+					local pos = Vector3.new(-1404.07996, 29.8520069, 5.26677656)
+					if near(pos, 8) then
+						CF("ProQuestProgress", "RichSon")
+					else
+						move(CFrame.new(pos))
+					end
+					status("Saber: getting relic")
+				else
+					equipNamed("Relic")
+					move(CFrame.new(-1405.3677978516, 29.977333068848, 4.5685839653015))
+					status("Saber: placing relic")
+				end
+			end
+			return true
+		end
+		if not tool("Torch") then
+			move(jungle.Torch.CFrame)
+			status("Saber: getting torch")
+		else
+			equipNamed("Torch")
+			local tpos = Vector3.new(1115.23499, 4.92147732, 4349.36963)
+			if near(tpos, 5) then
+				move(CFrame.new(1114.59863, 4.92147732, 4350.64258))
+				local t = tool("Torch")
+				if t and t:FindFirstChild("Handle") and desert.Burn:FindFirstChild("Fire") and firetouchinterest then
+					pcall(firetouchinterest, t.Handle, desert.Burn.Fire, 0)
+					pcall(firetouchinterest, t.Handle, desert.Burn.Fire, 1)
+				end
+			else
+				move(CFrame.new(tpos))
+			end
+			status("Saber: burning door")
+		end
+		return true
+	end
+
+	------------------------------------------------------------ YAMA
+	local function yamaTick()
+		if owns("Yama") then
+			return false
+		end
+		local prog = CF("EliteHunter", "Progress")
+		if type(prog) == "number" and prog < 30 then
+			local e = findElite()
+			if e then
+				if ensureElite(e.Name) then
+					fight(e, true)
+				end
+				return true
+			end
+			status("Yama: waiting Elite Hunter (" .. prog .. "/30)")
+			return false
+		end
+		local wf = workspace.Map:FindFirstChild("Waterfall")
+		local sk = wf and wf:FindFirstChild("SealedKatana")
+		if not sk then
+			move(CFrame.new(5251.900390625, 17.18115234375, 453.6025390625))
+			status("Yama: going to Sealed Katana")
+			return true
+		end
+		if not near(sk.WorldPivot.Position, 50) then
+			move(sk.WorldPivot)
+			return true
+		end
+		local ghost = findMob("Ghost")
+		if ghost then
+			fight(ghost)
+			return true
+		end
+		pcall(function()
+			click(sk.Hitbox.ClickDetector)
+		end)
+		status("Yama: pulling the sword")
+		return true
+	end
+
+	------------------------------------------------------------ TUSHITA
+	local function tushitaTick()
+		if owns("Tushita") then
+			return false
+		end
+		local prog = CF("TushitaProgress")
+		if type(prog) ~= "table" then
+			return false
+		end
+		if prog.OpenedDoor then
+			local b = findBoss("Longma")
+			if b then
+				fight(b, true)
+				return true
+			end
+			status("Tushita: waiting Longma")
+			return false
+		end
+		local wf = workspace.Map:FindFirstChild("Waterfall")
+		local im = wf and wf:FindFirstChild("IslandModel")
+		local hb = im and im:FindFirstChild("Hitbox", true)
+		if not hb then
+			move(CFrame.new(5677.541015625, 28.533447265625, 357.9483642578125))
+			status("Tushita: going to island")
+			return true
+		end
+		if hb:FindFirstChild("TouchInterest") then
+			if not tool("Holy Torch") then
+				move(hb.CFrame)
+				status("Tushita: getting Holy Torch")
+			else
+				equipNamed("Holy Torch")
+				local need = false
+				pcall(function()
+					for _, tch in ipairs(workspace.Map.Turtle.QuestTorches:GetChildren()) do
+						if tch:IsA("MeshPart") and tch:FindFirstChild("Particles") and not tch.Particles.Main.Enabled then
+							need = true
+						end
+					end
+				end)
+				if need then
+					for i = 1, 5 do
+						CF("TushitaProgress", "Torch", i)
+					end
+					task.wait(2)
+				end
+				status("Tushita: lighting torches")
+			end
+			return true
+		end
+		status("Tushita: Rip Indra not spawned")
+		return false
+	end
+
+	------------------------------------------------------------ RAINBOW HAKI
+	local RB = { "Stone", "Hydra Leader", "Kilo Admiral", "Captain Elephant", "Beautiful Pirate" }
+	local function rainbowTick()
+		if CF("HornedMan") == 1 then
+			return false
+		end
+		local active
+		if hasQuest() then
+			for _, n in ipairs(RB) do
+				if questHas(n) then
+					active = n
+					break
+				end
+			end
+		end
+		if not active then
+			local horned = findNpc("Horned Man")
+			if not horned then
+				status("Rainbow Haki: Horned Man not found")
+				return false
+			end
+			move(horned.HumanoidRootPart.CFrame)
+			status("Rainbow Haki: taking quest")
+			if near(horned.HumanoidRootPart.Position, 8) then
+				task.wait(2)
+				CF("HornedMan", "Bet")
+			end
+			return true
+		end
+		local b = findBoss(active)
+		if b then
+			fight(b, true)
+			return true
+		end
+		status("Rainbow Haki: waiting " .. active)
+		return false
+	end
+
+	------------------------------------------------------------ THIRD WORLD (Sea 2, level 1500)
+	local function bartilo(bp)
+		local r = hrp()
+		if bp == 0 then
+			if questHas("Swan Pirates") and questHas("50") and hasQuest() then
+				local m = findMob("Swan Pirate")
+				if m then
+					fight(m)
+				else
+					goSpawn("Swan Pirate")
+				end
+			else
+				local pos = Vector3.new(-456.28952, 73.0200958, 299.895966)
+				move(CFrame.new(pos))
+				status("Third World: taking Bartilo quest")
+				if near(pos, 8) then
+					CF("StartQuest", "BartiloQuest", 1)
+				end
+			end
+		elseif bp == 1 then
+			local j = findBoss("Jeremy")
+			if j then
+				fight(j, true)
+			else
+				status("Third World: waiting Jeremy")
+			end
+		else -- bp == 2: dia diem tam
+			local center = Vector3.new(-1835.65, 10.4325, 1679.75)
+			if not near(center, 100) then
+				move(CFrame.new(center))
+				status("Third World: going to plates")
+			else
+				for i = 1, 8 do
+					local pl = workspace.Map.Dressrosa.BartiloPlates:FindFirstChild("Plate" .. i)
+					if pl and pl.BrickColor == BrickColor.new("Sand yellow") then
+						r.CFrame = pl.CFrame
+						task.wait()
+						if firetouchinterest then
+							pcall(firetouchinterest, pl, r, 0)
+							pcall(firetouchinterest, pl, r, 1)
+						end
+						break
+					end
+				end
+			end
+		end
+	end
+	local function thirdTick()
+		if lp.Data.Level.Value < 1500 then
+			return false
+		end
+		local bp = CF("BartiloQuestProgress", "Bartilo")
+		if bp ~= 3 then
+			bartilo(bp)
+			return true
+		end
+		local talk = CF("TalkTrevor", "1")
+		local zq = CF("ZQuestProgress", "Check")
+		if talk == 0 and zq == 1 and CF("ZQuestProgress", "Zou") == 0 then
+			status("Travelling to Third Sea")
+			CF("TravelZou")
+			task.wait(2)
+			return true
+		end
+		if talk ~= 0 then
+			local fruit
+			for _, cont in ipairs({ lp.Backpack, lp.Character }) do
+				if cont then
+					for _, t in ipairs(cont:GetChildren()) do
+						if t:IsA("Tool") and t.Name:find("Fruit") then
+							fruit = t
+						end
+					end
+				end
+			end
+			if not fruit then
+				status("Third World: hold a fruit for Trevor")
+				return false
+			end
+			local pos = Vector3.new(-339.79840087891, 331.86065673828, 643.83178710938)
+			move(CFrame.new(pos))
+			status("Third World: giving fruit to Trevor")
+			if near(pos, 5) and talk ~= 1 then
+				if fruit.Parent ~= lp.Character then
+					equipNamed(fruit.Name)
+				end
+				CF("TalkTrevor", "1")
+				CF("TalkTrevor", "2")
+				CF("TalkTrevor", "3")
+			end
+			return true
+		end
+		if not zq then
+			local b = findBoss("Don Swan")
+			if b then
+				fight(b, true)
+				return true
+			end
+			status("Third World: waiting Don Swan")
+			return false
+		elseif zq == 0 then
+			local part
+			pcall(function()
+				part = workspace.Map.IndraIsland.Part
+			end)
+			local r = hrp()
+			if part and r and (r.Position - part.Position).Magnitude > 1000 then
+				local pos = Vector3.new(-1926.78772, 12.1678171, 1739.80884)
+				move(CFrame.new(pos))
+				status("Third World: going to Rip Indra island")
+				if near(pos, 5) then
+					CF("ZQuestProgress", "Begin")
+				end
+				return true
+			end
+			for _, m in ipairs(workspace.Enemies:GetChildren()) do
+				if m.Name == "rip_indra" and isAlive(m) then
+					fight(m, true)
+					return true
+				end
+			end
+			status("Third World: waiting Rip Indra")
+		end
+		return false
+	end
+
+	------------------------------------------------------------ dang ky Extras
+	local function reg(flagKey, ktKey, fn, sea)
+		Extras[#Extras + 1] = {
+			enabled = function()
+				return (Settings[flagKey] or KT[ktKey]) and (not sea or seaIdx == sea)
+			end,
+			tick = fn,
+		}
+	end
+	reg("AutoSaber", "Saber", saberTick, 1)
+	reg("AutoYama", "Yama", yamaTick, nil)
+	reg("AutoTushita", "Tushita", tushitaTick, nil)
+	reg("AutoRainbow", "Rainbow", rainbowTick, nil)
+	reg("AutoThirdWorld", "Third", thirdTick, 2)
+	-- Auto New World da co o khoi truoc: Kaitun bat qua Settings.AutoNewWorld
+
+	------------------------------------------------------------ KAITUN
+	local function ktMode(lvl)
+		if seaIdx == 3 then
+			if lvl >= 2575 then
+				return "Farm Tyrant Island"
+			elseif lvl >= 2275 then
+				return "Farm Katakuri"
+			elseif lvl >= 2050 then
+				return "Farm Bones"
+			end
+		end
+		return "Level Farm"
+	end
+	local ktLabel
+	local lastBuy = 0
+	task.spawn(function()
+		while alive() do
+			task.wait(3)
+			if Settings.Kaitun then
+				pcall(function()
+					local lvl = lp.Data.Level.Value
+					Settings.StartFarm = true
+					Settings.AutoQuest = true
+					Settings.BringMob = true
+					Settings.Buso = true
+					Settings.AutoStats = true
+					Settings.AutoStore = true
+					Settings.CollectFruit = Settings.KtFruit == true
+					local picked = false
+					for _, on in pairs(Settings.Stats) do
+						if on then
+							picked = true
+						end
+					end
+					if not picked then
+						Settings.Stats.Melee = true
+						Settings.Stats.Defense = true
+					end
+					Settings.Mode = ktMode(lvl)
+
+					local world = Settings.KtWorld ~= false
+					Settings.AutoNewWorld = world and seaIdx == 1 and lvl >= 700
+					KT.Third = world and seaIdx == 2 and lvl >= 1500
+					KT.Saber = Settings.KtSaber ~= false and seaIdx == 1 and lvl >= 200 and not owns("Saber")
+					KT.Yama = Settings.KtYama == true and seaIdx == 3 and not owns("Yama")
+					KT.Tushita = Settings.KtTushita == true and seaIdx == 3 and not owns("Tushita")
+					KT.Rainbow = Settings.KtRainbow == true and seaIdx == 3 and lvl >= 1100
+
+					if os.clock() - lastBuy > 60 then
+						lastBuy = os.clock()
+						CF("BuyHaki", "Geppo")
+						CF("BuyHaki", "Buso")
+						CF("BuyHaki", "Soru")
+						CF("KenTalk", "Buy")
+					end
+					if ktLabel then
+						ktLabel.SetText(string.format("Kaitun: level %d | sea %d | mode %s", lvl, seaIdx, Settings.Mode))
+					end
+				end)
+			else
+				KT.Saber, KT.Yama, KT.Tushita, KT.Rainbow, KT.Third = nil, nil, nil, nil, nil
+			end
+		end
+	end)
+
+	UIQ[#UIQ + 1] = function(Main, ctx)
+		local K = Main.CreatePage({ Page_Name = "Kaitun", Page_Title = "Kaitun" })
+		local S0 = K.CreateSection("Kaitun (Full Auto)")
+		ktLabel = S0.CreateLabel({ Title = "Kaitun: off" })
+		S0.CreateToggle({
+			Title = "Enable Kaitun",
+			Desc = "Tu dong: farm level, chon che do theo level, sang Sea 2/3, lam quest vat pham, cong diem, cat trai",
+			Default = Settings.Kaitun,
+		}, function(v)
+			Settings.Kaitun = v
+			if not v then
+				Settings.StartFarm = false
+				stopMove()
+			end
+			save()
+		end)
+		local S1 = K.CreateSection("Kaitun Options")
+		S1.CreateToggle({ Title = "Auto Change Sea (700 / 1500)", Default = Settings.KtWorld ~= false }, bind("KtWorld"))
+		S1.CreateToggle({ Title = "Get Saber (Sea 1)", Default = Settings.KtSaber ~= false }, bind("KtSaber"))
+		S1.CreateToggle({ Title = "Get Yama (Sea 3)", Default = Settings.KtYama }, bind("KtYama"))
+		S1.CreateToggle({ Title = "Get Tushita (Sea 3)", Default = Settings.KtTushita }, bind("KtTushita"))
+		S1.CreateToggle({ Title = "Get Rainbow Haki (Sea 3)", Default = Settings.KtRainbow }, bind("KtRainbow"))
+		S1.CreateToggle({ Title = "Collect Fruit While Farming", Default = Settings.KtFruit }, bind("KtFruit"))
+		local S2 = K.CreateSection("Item Quests (manual)")
+		S2.CreateToggle({ Title = "Auto Saber", Desc = "Sea 1, level 200+", Default = Settings.AutoSaber }, bind("AutoSaber"))
+		S2.CreateToggle({ Title = "Auto Yama", Desc = "30 Elite Hunter roi rut kiem", Default = Settings.AutoYama }, bind("AutoYama"))
+		S2.CreateToggle({ Title = "Auto Tushita", Desc = "Can Rip Indra da spawn", Default = Settings.AutoTushita }, bind("AutoTushita"))
+		S2.CreateToggle({ Title = "Auto Rainbow Haki", Default = Settings.AutoRainbow }, bind("AutoRainbow"))
+		S2.CreateToggle({ Title = "Auto Third World", Desc = "Sea 2, level 1500+, can cam 1 trai", Default = Settings.AutoThirdWorld }, bind("AutoThirdWorld"))
 	end
 end
 
