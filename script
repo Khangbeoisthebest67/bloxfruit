@@ -398,7 +398,7 @@ t9.Mas = function(p18, p19)
 		BringEnemy()
 
 		if p18.Humanoid.Health <= HealthM then
-			_tp(p18.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0))
+			_tp(p18.HumanoidRootPart.CFrame * CFrame.new(0, getgenv().FarmHeight or 20, 0))
 
 			local SelectedMasterySkills = _G.SelectedMasterySkills
 
@@ -3540,7 +3540,26 @@ do
 
 				repeat
 					getgenv().__LevelStamp = os.clock()
+					local __hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+					if not __hum or __hum.Health <= 0 then
+						local __c = plr.CharacterAdded:Wait()
+						__c:WaitForChild("HumanoidRootPart", 10)
+						task.wait(1.5)
+						if getgenv().KhangEquip then getgenv().KhangEquip() end
+					end
+					if getgenv().PauseLevel then
+						task.wait(0.2)
+					end
+					if os.clock() - (getgenv().__EqT or 0) > 1 then
+						getgenv().__EqT = os.clock()
+						if plr.Character and not plr.Character:FindFirstChildOfClass("Tool") and getgenv().KhangEquip then
+							getgenv().KhangEquip()
+						end
+					end
 					pcall(function()
+						if getgenv().PauseLevel then
+							return
+						end
 						local Character = plr.Character or plr.CharacterAdded:Wait()
 						local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 
@@ -3674,11 +3693,12 @@ do
 								while true do
 									task.wait(Sec)
 									getgenv().__LevelStamp = os.clock()
-									_tp(v339.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0))
+									getgenv().KhangTargetName = v339.Name
+									_tp(v339.HumanoidRootPart.CFrame * CFrame.new(0, getgenv().FarmHeight or 20, 0))
 									t9.Kill(v339, _G.Level)
 
 									if v301("Quest") then
-										if not _G.Level or not v339.Parent or v339.Humanoid.Health <= 0 then
+										if not _G.Level or getgenv().PauseLevel or not v339.Parent or v339.Humanoid.Health <= 0 then
 											break
 										end
 									else
@@ -3703,7 +3723,7 @@ do
 									if string.find(v346.Name, v332) then
 										if t9.Alive(v346) then
 											v333 = true
-											_tp(v346.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0))
+											_tp(v346.HumanoidRootPart.CFrame * CFrame.new(0, getgenv().FarmHeight or 20, 0))
 
 											break
 										end
@@ -3716,7 +3736,7 @@ do
 
 								for _, v1 in v347, v348, v349 do
 									if string.find(v1.Name, v332) then
-										_tp(v1.CFrame * CFrame.new(0, 20, 0))
+										_tp(v1.CFrame * CFrame.new(0, getgenv().FarmHeight or 20, 0))
 
 										break
 									end
@@ -9009,7 +9029,7 @@ do
 								else
 									if plr.Backpack:FindFirstChild("Yama") then
 										EquipWeapon("Yama")
-										_tp(v805.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0))
+										_tp(v805.HumanoidRootPart.CFrame * CFrame.new(0, getgenv().FarmHeight or 20, 0))
 
 										if not _G.CDK or not v805.Parent or v805.Humanoid.Health <= 0 then
 											break
@@ -9020,7 +9040,7 @@ do
 										EquipWeapon("Tushita")
 									elseif plr.Backpack:FindFirstChild("Tushita") then
 										EquipWeapon("Tushita")
-										_tp(v805.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0))
+										_tp(v805.HumanoidRootPart.CFrame * CFrame.new(0, getgenv().FarmHeight or 20, 0))
 
 										if not _G.CDK or not v805.Parent or v805.Humanoid.Health <= 0 then
 											break
@@ -9028,7 +9048,7 @@ do
 									end
 								end
 
-								_tp(v805.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0))
+								_tp(v805.HumanoidRootPart.CFrame * CFrame.new(0, getgenv().FarmHeight or 20, 0))
 							until not _G.CDK or not v805.Parent or v805.Humanoid.Health <= 0
 						else
 							_tp(CFrame.new(-12318.193359375, 601.95184326171875, -6538.662109375))
@@ -31333,6 +31353,127 @@ do
 	end })
 end
 
+
+-- ===== FARM TUNING: do cao, toc do, uu tien nhat trai / danh boss, an aura =====
+do
+	local FT = t15.Main:AddLeftGroupbox("Farm Tuning")
+	FT:AddSlider("Farm_Height", {
+		Text = "Do cao farm",
+		Min = 5, Max = 60, Default = 20, Rounding = 0,
+		Callback = function(v) getgenv().FarmHeight = v end
+	})
+	FT:AddSlider("Farm_Speed", {
+		Text = "Toc do farm",
+		Min = 50, Max = 400, Default = 180, Rounding = 0,
+		Callback = function(v)
+			getgenv().TweenSpeedNear = v
+			getgenv().TweenSpeedFar = v
+		end
+	})
+	FT:AddToggle("Prio_Boss", {
+		Text = "Uu tien danh boss",
+		Default = false,
+		Callback = function(v) getgenv().PrioBoss = v end
+	})
+	FT:AddToggle("Prio_Fruit", {
+		Text = "Uu tien nhat trai",
+		Default = false,
+		Callback = function(v) getgenv().PrioFruit = v end
+	})
+	FT:AddToggle("Hide_Aura", {
+		Text = "An aura khi farm",
+		Default = true,
+		Callback = function(v) getgenv().HideAura = v end
+	})
+
+	getgenv().KhangEquip = function()
+		local want = _G.SelectWeapon
+		for _ = 1, 50 do
+			local ch = plr.Character
+			local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+			if hum and hum.Health > 0 then
+				local pick
+				for _, t in ipairs(plr.Backpack:GetChildren()) do
+					if t:IsA("Tool") and ((want and t.Name == want) or (not want and t.ToolTip == "Melee")) then
+						pick = t
+						break
+					end
+				 end
+				if not pick and not want then
+					for _, t in ipairs(plr.Backpack:GetChildren()) do
+						if t:IsA("Tool") then
+							pick = t
+							break
+						end
+					end
+				end
+				if pick then
+					hum:EquipTool(pick)
+					return true
+				end
+			end
+			task.wait(0.2)
+		end
+		return false
+	end
+
+	local BossList = { "Gorilla King", "Bobby", "The Saw", "Yeti", "Mob Leader", "Vice Admiral", "Saber Expert",
+		"Warden", "Chief Warden", "Swan", "Magma Admiral", "Fishman Lord", "Wysper", "Thunder God", "Cyborg",
+		"Ice Admiral", "Diamond", "Jeremy", "Orbitus", "Don Swan", "Smoke Admiral", "Cake Queen", "Longma",
+		"Captain Elephant", "Beautiful Pirate", "Stone", "Kilo Admiral", "Island Empress", "Cursed Captain",
+		"Darkbeard", "Soul Reaper", "Dough King", "Cake Prince", "Tyrant of the Skies" }
+
+	-- uu tien: boss truoc, roi trai; khi uu tien dang chay thi tam dung farm level
+	task.spawn(function()
+		while task.wait(0.3) do
+			pcall(function()
+				if getgenv().PrioBoss and _G.Level then
+					local boss = _G.FindBoss and CheckNameBoss({_G.FindBoss})
+					if boss and IsMobAlive(boss) then
+						getgenv().PauseLevel = true
+						getgenv().KhangTargetName = boss.Name
+						if getgenv().KhangEquip then getgenv().KhangEquip() end
+						toTarget(boss.HumanoidRootPart.CFrame * CFrame.new(0, getgenv().FarmHeight or 20, 0))
+						getgenv().ClickM1(boss)
+						return
+					end
+				end
+				if getgenv().PrioFruit and _G.Level then
+					local f = GetPathFruit()
+					if f and f:FindFirstChild("Handle") then
+						getgenv().PauseLevel = true
+						getgenv().KhangTargetName = nil
+						toTarget(f.Handle.CFrame, true)
+						return
+					end
+				end
+				getgenv().PauseLevel = false
+				if _G.Level then
+					_G.Seriality = true
+				end
+			end)
+		end
+	end)
+
+	-- an aura (highlight) tren nhan vat khi farm
+	task.spawn(function()
+		while task.wait(0.5) do
+			if getgenv().HideAura ~= false then
+				pcall(function()
+					local c = plr.Character
+					if c then
+						for _, d in ipairs(c:GetDescendants()) do
+							if d:IsA("Highlight") or d:IsA("SelectionBox") then
+								d:Destroy()
+							end
+						end
+					end
+				end)
+			end
+		end
+	end)
+end
+
 GRP_Misc_Server_Function = t15.Misc:AddLeftGroupbox("Server - Function")
 GRP_Misc_Server_Function:AddButton({
 	Text = "Redeem All Codes",
@@ -31997,7 +32138,17 @@ do
 			return
 		end
 
-		local v1525 = v1505(Character, 60)
+		local v1525 = v1505(Character, getgenv().HitboxRange or 60)
+		local __tn = getgenv().KhangTargetName
+		if __tn then
+			local __keep = {}
+			for _, __m in ipairs(v1525) do
+				if __m.Name == __tn then
+					table.insert(__keep, __m)
+				end
+			end
+			v1525 = __keep
+		end
 
 		if #v1525 == 0 then
 			return
@@ -32128,13 +32279,27 @@ do
 	task.spawn(function()
 		RunSer.Heartbeat:Connect(function()
 			pcall(function()
+				local __farming = _G.Level or getgenv().PrioBoss or getgenv().PrioFruit
+				if __farming then
+					_G.Seriality = true
+					getgenv().__KhangSerOn = true
+				elseif getgenv().__KhangSerOn then
+					_G.Seriality = false
+					getgenv().__KhangSerOn = false
+					getgenv().KhangTargetName = nil
+				end
 				if not _G.Seriality then
 					return
+				end
+
+				if not game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool") and getgenv().KhangEquip then
+					getgenv().KhangEquip()
 				end
 
 				AttackNoCoolDown()
 
 				local Tool = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
+				if not Tool then return end
 				local ToolTip = Tool.ToolTip
 				local v1560 = get_Monster()
 
